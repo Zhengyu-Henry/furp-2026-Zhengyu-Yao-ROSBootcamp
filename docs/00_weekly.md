@@ -47,13 +47,28 @@
   自此正式进入对Client Libraries的学习。
 - Using colcon to build packages
   1. 认识ros workspace的基本概念：一个里面按照特定结构组织代码的文件夹，包含src/(源代码目录), build/(中间文件目录), install/(安装目录), log/(日志目录)这些目录。可以类比为整个“公司”的办公室大楼。
-     先使用mkdir命令创建一个workspace，命名为ros_ws，刚开始该文件夹中的src/目录是空的。
   2. 认识underlay和overlay的基本概念：underlay指已经存在的ROS2环境，提供基础的ROS2库、工具和依赖；overlay指自己创建的workspace，在这里编写和编译自己的包，可以覆盖或扩展underlay中的功能。
+     overlay优先级高于underlay，在overlay中的编译修改不会影响到underlay。
      需要特别注意的是：在编译自己的ROS2 workspace之前，必须先source系统安装的ROS2环境(underlay)，然后workspace(overlay)才能正确构建和运行。
-  3. 完成workspace的编译(使用--symlink-install)、测试和环境的加载。
-  4. 认识功能包(package)是一个具体的功能模块，包含代码、配置文件、描述文件，可以类比为公司的一个“部门”。
-  5. 认识colcon_cd命令：不用每次都输入长路径，就能直接跳到某个功能包的目录下。
-  6. 认识colcon mixins：colcon的一个快捷方式/预设功能，用于简化代码，提供准确度。
+  3. 认识功能包(package)是一个具体的功能模块，包含代码、配置文件、描述文件，可以类比为公司的一个“部门”。
+  4. 认识colcon_cd命令：不用每次都输入长路径，就能直接跳到某个功能包的目录下。
+  5. 认识colcon mixins：colcon的一个快捷方式/预设功能，用于简化代码，提供准确度。
+  6. 认识colcon build：是ROS2中用于编译workspace的命令，即把源代码变成可运行的节点。
+- Creating a workspace
+  1. 使用mkdir命令创建一个workspace，命名为ros_ws，刚开始该文件夹中的src/目录是空的。
+  2. clone a sample repo(ros_tutorials)
+  3. 通过rosdep解决依赖（最好每次clone后都确认一遍依赖是否完全）
+     Rosdep是ROS官方为了方便开发者管理依赖而设计的工具。
+       - sudo resdep init：只需在整个ROS环境中执行一次，负责为ROS系统初始化“软件源”。
+         软件源就是存放软件包的“仓库地址”，ROS有自己的软件包和依赖，这些包不在Ubuntu默认源里，所以ROS需要告诉rosdep工具软件源在哪里，这个“告诉”的动作就是初始化软件源。
+       - rosdep update：负责从刚才配置好的源网址，下载并更新本地的rosdep数据库。
+  4. 通过colcon完成对workspace的编译（colcon build）
+  5. 分别source ROS2核心环境(underlay)和刚刚编译好的workspace中的install目录（因为ROS2编译后生成的环境脚本和可执行文件都放在install目录下），效果和只source ROS2核心环境的效果是一样的。
+     source /opt/ros/humble/setup.bash
+     source install/local_setup.bash
+  6. 尝试demo（分别运行了一个publisher node和subscriber node）
+  <img width="2187" height="1392" alt="截图 2026-06-10 10-28-27" src="https://github.com/user-attachments/assets/d8391dc5-972f-47ac-8793-b491dd1bb7cd" />
+
 
 
 **Challenges & blockers**
