@@ -118,6 +118,16 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 ```
+  其中
+  - class MinimalPublisher(Node)：定义一个名为MinimalPublisher的类，并且它继承自Node（括号内的Node表示父类）。class + 类名 + （父类）：表示创建子类，子类拥有父类的所有属性和方法。
+  - __init__：是Python中类的构造函数（初始化方法）。当创建一个类的实例（对象）时，Python会自动调用这个方法，用来设置对象的初始状态或执行必要的准备工作。它的第一个参数必须是self，代表即将被创建的实例本身。
+  - super().__init__('minimal_publisher')：是Python中调用父类的构造函数的标准写法，并将节点名称传递给它。
+  - self.publisher_ = self.create_publisher(String, 'topic', 10)：创建一个发布者，它将在名为“topic”的话题上发布std_msgs/String类型的消息，并允许最多缓存10条未处理的消息，该发布者对象保存在self.pulisher_中，供后续的发布操作使用。
+  - self.timer = self.create_timer(timer_period, self.timer_callback)：创建一个定时器，参数包括周期（0.5秒）和回调函数，该定时器对象保存在self.timer中。
+  -  msg.data = 'Hello World: %d' % self.i：msg是一个对象，类型是std_msgs.msg.String，data是该消息对象的一个字段（属性），用于存放实际要发送的字符串。
+      
+  
+  
   2. 节点代码本身只描述了“做什么”，但ROS2的构建系统和运行时工具需要额外的声明文件来知道“这个包需要什么依赖”以及“如何找到这个包”
      因此编写好节点代码后必须在package.xml中声明所有直接依赖（上述节点代码中的依赖是rclpy和std_msgs）
      package.xml是ROS2生态的包的“身份证”文件，专用于ROS2的构建系统的colcon。
@@ -150,10 +160,13 @@ entry_points={
 
 
 **Challenges & blockers**
-- _..._
+- 目前虽然进度一直在推进，但对大量新概念和新逻辑仍有些混乱，有待仔细梳理一下。
+- 编写node, service, client等代码仍有较大困难，主要是Python基础尚不熟练。
 
 **Next steps**
-- _..._
+- 继续推进ROS2的学习，同时开始第二周主线任务的学习（Carter建模、URDF、Xacro和TF），尽早学完能开始动手实践。
+- 逐步梳理大量的新学知识，不但能看懂还要会写会用。
+- 通过精读tutorial给出的样本代码（node, service, client等），逐步熟悉Python相关知识，提高自己编写代码的能力。
 
 **Hours spent (optional):**
 
