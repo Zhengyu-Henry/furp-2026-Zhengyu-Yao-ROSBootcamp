@@ -157,6 +157,10 @@ entry_points={
   2. 认识rosidl_default_runtime：是运行时依赖，提供解析和使用自定义消息类型所需的基础库，因此需要<exec_depend>。
   3. 如果自定义消息引用了其他包的消息，则必须通过<depend>或<build_depend>+<exec_depend>声明对那个包的依赖，确保编译和运行时都能找到它。
   4. <member_of_group>rosidl_interface_packages</member_of_group>：是ROS2的约定，用于将此包标记为“接口包”，使得其他包能够通过find_package正确找到你的接口。
+- Launch
+  1. from launch import LaunchDescription：LaunchDescription是launch文件的“剧本”，里面列出要启动的节点。
+  2. def generate_launch_description()：定义的这个函数必须叫这个名字，ROS2的ros2 launch命令会调用它返回LaunchDescription对象。
+  3. os模块用于路径拼接，glob模块用于匹配文件模式。
 
 
 **Challenges & blockers**
