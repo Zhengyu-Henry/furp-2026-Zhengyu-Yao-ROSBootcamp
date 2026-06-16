@@ -157,11 +157,6 @@ entry_points={
   2. 认识rosidl_default_runtime：是运行时依赖，提供解析和使用自定义消息类型所需的基础库，因此需要<exec_depend>。
   3. 如果自定义消息引用了其他包的消息，则必须通过<depend>或<build_depend>+<exec_depend>声明对那个包的依赖，确保编译和运行时都能找到它。
   4. <member_of_group>rosidl_interface_packages</member_of_group>：是ROS2的约定，用于将此包标记为“接口包”，使得其他包能够通过find_package正确找到你的接口。
-- Launch
-  1. from launch import LaunchDescription：LaunchDescription是launch文件的“剧本”，里面列出要启动的节点。
-  2. def generate_launch_description()：定义的这个函数必须叫这个名字，ROS2的ros2 launch命令会调用它返回LaunchDescription对象。
-  3. os模块用于路径拼接，glob模块用于匹配文件模式。
-
 
 **Challenges & blockers**
 - 目前虽然进度一直在推进，但对大量新概念和新逻辑仍有些混乱，有待仔细梳理一下。
@@ -172,6 +167,37 @@ entry_points={
 - 逐步梳理大量的新学知识，不但能看懂还要会写会用。
 - 通过精读tutorial给出的样本代码（node, service, client等），逐步熟悉Python相关知识，提高自己编写代码的能力。
 
-**Hours spent (optional):**
+### Week 2 — 2026-6-15
 
-**Links (optional):**
+**Attended this week's meeting:** Yes / No (if No, did you email leave? Yes / No)
+
+**Progress this week**
+- 学习Launch文件
+  1. 认识Launch文件的基本含义：是ROS2的“一键启动脚本”，能够批量启动节点、自动配置参数、管理节点属性、控制启动顺序。
+  2. 能够创建一个Launch文件并基本认识Launch文件的Python写法
+     - from launch import LaunchDescription：LaunchDescription是launch文件的“剧本”，里面列出要启动的节点。
+     - def generate_launch_description()：定义的这个函数必须叫这个名字，ROS2的ros2 launch命令会调用它返回LaunchDescription对象。
+  3. 如果要将Launch文件融入到功能包里，需要创建存放Launch文件的结构，因为ROS2的ros2 launch命令会按照约定路线查找launch文件，并且构建系统(colcon)需要知道把这些文件安装到哪里去。
+     - Launch文件必须放在包的launch/目录下，并且构建后必须被复制到install/share/my_package/launch/。如果没有这个结构，ros2 launch就会报找不到文件。
+     - 因此需要通过setup.py的data_files参数显示告诉setuptools：请把launch/目录下的文件复制到share/包名/launch下。
+     - 基本理解了输入到setup.py中的内容。其中os模块用于路径拼接，glob模块用于匹配文件模式。
+  4. 认识Substitution：是一种在执行时才被计算和替换的变量，它让你可以在Launch文件中使用动态的值，而不是写死固定的字符串。
+- 学习XML，为后续学习URDF做准备
+  1. <?xml version="1.0" encoding="UTF-8"?>：XML声明，指定版本和编码。必写，但一般不用修改。
+  2. <launch>：所有XML launch文件的根元素
+  3. <arg name="参数名" default="默认值" />：定义参数，可以在调用时传入值覆盖默认值。
+  4. <let name="变量名" value="变量的值" />：定义一个局部变量。
+  5. <node pkg="包名" namespace="命名空间" exec="可执行文件" name="节点名" />：启动一个节点
+  6. <executable cmd="命令内容" />：在系统shell中执行一条命令。
+  7. <timer period="周期" />：定义一个计时器，每多久（周期）执行一次内部的内容。
+  8. if属性：条件判断，只有条件为真时才执行。   
+
+**Challenges & blockers**
+- _What got in the way? What are you stuck on?_
+
+**Next steps**
+- _What will you do next week?_
+
+**Hours spent (optional):** _e.g. 6h_
+
+**Links (optional):** _commits, notebooks, docs, datasets..._
