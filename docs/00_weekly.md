@@ -182,15 +182,56 @@ entry_points={
      - 因此需要通过setup.py的data_files参数显示告诉setuptools：请把launch/目录下的文件复制到share/包名/launch下。
      - 基本理解了输入到setup.py中的内容。其中os模块用于路径拼接，glob模块用于匹配文件模式。
   4. 认识Substitution：是一种在执行时才被计算和替换的变量，它让你可以在Launch文件中使用动态的值，而不是写死固定的字符串。
+- 认识时间戳(timestamp)：在ROS2中，绝大多数消息（特别是传感器数据和TF变换）都包含一个时间戳字段，用来告诉系统“我是在这个时间点被测量/生成的”。
+- 认识传感器(sensor)：相当于“机器人感知真实世界的器官”。它把物理世界中的信号（光、声音、距离、力、温度等）转换成机器人能理解的电信号或数据。
 - 学习XML，为后续学习URDF做准备
   1. <?xml version="1.0" encoding="UTF-8"?>：XML声明，指定版本和编码。必写，但一般不用修改。
   2. <launch>：所有XML launch文件的根元素
   3. <arg name="参数名" default="默认值" />：定义参数，可以在调用时传入值覆盖默认值。
   4. <let name="变量名" value="变量的值" />：定义一个局部变量。
-  5. <node pkg="包名" namespace="命名空间" exec="可执行文件" name="节点名" />：启动一个节点
-  6. <executable cmd="命令内容" />：在系统shell中执行一条命令。
-  7. <timer period="周期" />：定义一个计时器，每多久（周期）执行一次内部的内容。
-  8. if属性：条件判断，只有条件为真时才执行。   
+  5. <node pkg="包名" namespace="命名空间" exec="可执行文件" name="节点名" />：启动一个节点。
+  6. <param name="参数名" value="参数值" />：设置节点参数。
+  7. <executable cmd="命令内容" />：在系统shell中执行一条命令。
+  8. <timer period="周期" />：定义一个计时器，每多久（周期）执行一次内部的内容。
+  9. if属性：条件判断，只有条件为真时才执行。
+  10. <include file="指定被包含文件的路径">：引用另一个launch文件。
+  11. $()：命令替换语法。先执行括号里面的命令，然后把命令的输出结果替换到这里。
+  12. find-pkg-share 包名：查找某个包的share目录。
+- Writing a static broadcaster(Python)
+  1. 认识Broadcaster（广播器）：专门负责把坐标变换(Transform)发布出去的工具。你把一个写好的TransformStamped对象塞给它，它立刻把这个数据打包，发送到/tf话题上，任何订阅了/tf的节点都能收到这个广播。
+     - 普通广播器（动态）：你每隔0.1秒调用一次sendTransform，广播一次当前时间点的最新坐标（比如odom到base_link在不断变化）。
+     - 静态广播器(Static Broadcaster)：专门用来发永远不变的变化（比如base_link到laser_link的安装位置）。它只发一次，且发到/tf_static话题，而不是/tf，节约带宽。
+  2. static broadcaster node
+     - math, numpy：用于数学计算，特别是四元数转换。
+     - from geometry_msgs.msg import TransformStamped：TF消息类型，包含时间戳、父坐标系（变换的参考基准）、子坐标系（被描述的对象）、平移和旋转。是ROS2中用来表达Transform的具体消息结构，可以理解为带上了时间戳、收件人和发件人信息的Transform。
+     - StaticTransformBroadcaster(self)：创建一个专门用来发布静态坐标变换的广播器对象，并且把这个对象交给当前这个节点(self)来管理。
+  3. ROS2已经准备好了现成的命令行工具和launch节点，不用写代码。ros2 run tf2_ros static_transform_publisher --x 0 --y 0 --z 1 --yaw 0 --pitch 0 --roll 0 --frame-id world --child-frame-id mystaticturtle：系统会发布一个静态变换，表明mystaticturtle坐标系始终固定在world坐标系上方1米处，且朝向完全一致。
+- Writing a broadcaster (Python)
+  1. broadcaster node
+     - from tf2_ros import TransformBroadcaster：是TF系统的专属发布者，专门用来把TransformStamped这种消息发布到/tf话题上。（Broadcaster是一个大类，TransformBroadcaster是其中的一员）。
+     - from turtlesim.msg import Pose：乌龟位姿的消息类型（包含x，y，theta，线速度，角速度）。
+- Writing a listener (Python)
+  1. listener node
+     - from geometry_msgs.msg import Twist：速度消息，用于控制乌龟移动。
+     - from tf2_ros.buffer import Buffer：一个存储所有TF变换信息的“内存数据库”。把你查询过的、或者接收到的所有坐标变换数据，按照时间戳和坐标系名称分门别类地存起来。
+     - from tf2_ros.transform_listener import TransformListener：自动接收系统里广播器发来的所有TransformStamped消息，然后一条一条存进你Buffer仓库里。
+     - from turtlesim.srv import Spawn：服务，用于生成一只新乌龟。
+- Adding a frame (Python)
+  1. TF Tree
+     - 一个坐标系只能有一个父坐标系，但可以有多个子坐标系。根坐标系是整个系统的绝对基准（通常叫做map或world），它没有父坐标系。
+     - 想象你手里拿着一个激光笔，站在房间中央：父坐标系=你自己的身体，即参考基准；子坐标系=墙上的红点，即被描述的东西。
+     
+  
+     
+   
+  
+- 初步认识frame和TF：frame即坐标系，在ROS2中，系统通过frame的名字（world, turtle1, base_link, laser_link等）来识别不同的坐标系。frame之间的连接叫做TF，frame相当于地图上的一个地标点，而TF描述了从一个地标到另一个地标的距离和方向。例如雷达说前方1米有障碍，这个1米是相对于laser_link的，只有通过TF把它转换到base_link或map，机器人才知道这个障碍相对于我的底盘在哪里。
+- 认识map：是ROS2中一个非常特殊的坐标系，代表了机器人在真实世界中的绝对参考点，提供绝对位置
+- 认识odom：即odometry（里程计），是ROS2中一个约定的坐标系名称，是一个“从起始点开始，通过机器人自身运动估算出来的实时位置”的参考系，提供高频、平滑的短期运动估计。
+- 认识transform（变换）：描述的是一个坐标系相对于另一个坐标系在三维空间中的位置（平移）和朝向关系（旋转），即在X、Y、Z三个方向上的距离偏移和三维空间中的朝向（ROS2用四元数表示）
+- RViz学习
+  1. 在RViz里，Fixed Frame（固定坐标系）是所有可视化数据的共同参考基准，相当于整个3D世界的“大地”；Target Frame（目标坐标系）是3D视图摄像头要追踪观察的目标，决定了视图的“焦点”和观察方式。
+  2. 
 
 **Challenges & blockers**
 - _What got in the way? What are you stuck on?_
