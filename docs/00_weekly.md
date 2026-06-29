@@ -169,7 +169,7 @@ entry_points={
 
 ### Week 2 — 2026-6-15
 
-**Attended this week's meeting:** Yes / No (if No, did you email leave? Yes / No)
+**Attended this week's meeting:** Yes 
 
 **Progress this week**
 - 学习/cmd_vel
@@ -290,7 +290,7 @@ ${}中还可以包含数学计算。
 
 ### Week 3 — 2026-06-22
 
-**Attended this week's meeting:** Yes / No (if No, did you email leave? Yes / No)
+**Attended this week's meeting:** Yes 
 
 **Progress this week**
 - /cmd_vel到左右轮速度（差速运动学）
@@ -330,16 +330,102 @@ ${}中还可以包含数学计算。
  - Nav2架构
    1. Nav2是一个用于机器人自主导航的模块化框架，它通过多个独立服务器协同工作，让机器人能理解环境、规划路径并躲避障碍。
    2. Nav2采用插件化架构，核心是行为树导航器(Behavior Tree Nevigator)，它像一个总指挥，通过调用各个独立的功能服务器（如规划、控制等）来完成任务。
-   3. Map Server（地图服务器）：用于加载、提供和保存环境地图。
-   4. Localization（定位）：定位模块负责回答“机器人在哪”的问题。
-   5. Planner Server（规划器服务器）：即“全局规划器“。它的任务是根据当前地图和机器人位置，计算出一条从起点到目标点的全局最优路径。
-   6. Controller Server（控制器服务器）：即”局部控制器“。它负责执行规划器生成的全局路径，将路径转换成具体的速度指令发送给电机。它主要关注机器人周围局部的动态环境，进行实时避障。
-   7. Behavior Tree Navigator（行为树导航器）：是Nav2的决策和调度核心。它使用行为树(BT)来定义和组织复杂的导航行为。
-   8. Costmap（代价地图）：是机器人用来表示环境”通行代价“的2D网格图。
+   3. Nav2的输入：/map（地图）, /tf（坐标系变换）, /scan（激光雷达）, /odom（里程计）；输出：/cmd_vel（速度指令）。使用ros2 topic list和ros2 run tf2_tools view_frames来确认它们都存在。
+   4. Map Server（地图服务器）：用于加载、提供和保存环境地图。
+   5. Localization（定位）：定位模块负责回答“机器人在哪”的问题。
+   6. Planner Server（规划器服务器）：即“全局规划器“。它的任务是根据当前地图和机器人位置，计算出一条从起点到目标点的全局最优路径。
+   7. Controller Server（控制器服务器）：即”局部控制器“。它负责执行规划器生成的全局路径，将路径转换成具体的速度指令发送给电机。它主要关注机器人周围局部的动态环境，进行实时避障。
+   8. Recovery Server（恢复服务器）：处理卡住/异常情况（后退、旋转、重新规划）。
+   9. Behavior Tree Navigator（行为树导航器）：是Nav2的决策和调度核心。它使用行为树(BT)来定义和组织复杂的导航行为。
+   10. Costmap（代价地图）：是机器人用来表示环境”通行代价“的2D网格图。
       - Global Costmap（全局代价地图）：基于整个静态地图构建，范围大、更新慢。Planner Server使用它来规划全局路径。
       - Local Costmap（局部代价地图）：只关注机器人周围的动态环境，是一个跟随机器人移动的小窗口，更新频率高。Controller Server使用它来进行实时避障和生成局部轨迹。
-   9. Obstacle Layer（障碍层）：构成代价地图的核心图层。实时处理传感器数据（如激光雷达），将检测到的障碍物标记在代价地图上。
-   10. Inflation Layer（膨胀层）：构成代价地图的核心图层。在障碍物周围根据距离计算出一个”危险梯度“。越靠近障碍物，代价值越高，以此确保规划出的路径会与障碍物保持安全距离。
+   11. Obstacle Layer（障碍层）：构成代价地图的核心图层。实时处理传感器数据（如激光雷达），将检测到的障碍物标记在代价地图上。
+   12. Inflation Layer（膨胀层）：构成代价地图的核心图层。在障碍物周围根据距离计算出一个”危险梯度“。越靠近障碍物，代价值越高，以此确保规划出的路径会与障碍物保持安全距离。
+   13. 如何检查导航链路是否接通：ros2 topic echo /plan（查看是否生成路径）, ros2 topic echo /cmd_vel（查看是否发出速度指令）, ros2 node list（查看各节点）, ros2 node info（查看各节点状态）。
+   14. 参数调整的基本原则：
+       - 路径规划：tolerance（容差）调大，路径更直；调小，路径更贴墙。
+       - 避障：inflation_radius（膨胀半径）调大，机器人更怕障碍物；调小，更“勇敢”。
+       - 速度：max_vel_x, max_vel_theta限制机器人的最大运动能力。
+       - 目标检查：xy_goal_tolerance, yaw_goal_tolerance控制机器人认为“到达目标”的误差范围。
+- Lifecycle Node（生命周期节点）：生命周期节点把启动分解成了“先配置，再激活”的严谨步骤。它能确保所有硬件和依赖准备就绪后，再让机器人动起来；当某个节点出问题时，也能有序地让整个系统安全关闭，避免失控。
+  1. Primary States（主状态）
+     - unconfigured（未配置）：节点刚被实例化（创建）出来时的初始状态。
+     - inactive（未激活）：节点已配置好，但不处理任何数据。
+     - active（激活）：节点的正常工作状态。
+     - finalized（已终结）：节点的最终状态，生命周期的终点。
+  2. Transition States（过渡状态）：在主状态之间切换，必须经过短暂的过渡状态。
+     - configure：从unconfigured到inactive。
+     - activate：从inactive到active。
+     - deactivate：从active到inactive。
+     - cleanup：从inactive到unconfigured。
+     - shutdown：从unconfigured/inactive/active到finalized。
+  3. 通过ros2 lifecycle get /节点名 来查看其当前状态
+**Challenges & blockers**
+- 如何正确Debug？（调了两天Nav2配置失败教训）
+  1. 从“改到对”变成“找到错”：先假设，再验证。面对任何报错，先不要动手改代码，而是先想或写出一个明确的猜测，然后去执行命令验证这个猜测，猜错了就换下一个猜测，直到猜中为止。
+  2. 二分法，把整个可能都有错误的系统拆成两个部分，例如Nav2启动不了可以先不管导航，只测底层硬件和TF，这样能先把一半的错误可能排除掉。
+  3. 利用rosbag，先把雷达数据、里程计数据、TF数据等录制下来(ros2 bag record -a)，后续可以用ros2 bag play重播数据，只启动算法节点。
+  4. 每次改完参数都记下来改了什么，现象是什么。
+
+**Next steps**
+- _What will you do next week?_
+
+**Hours spent (optional):** _e.g. 6h_
+
+**Links (optional):** _commits, notebooks, docs, datasets..._
+
+### Week 4 — 2026-06-29
+
+**Attended this week's meeting:** Yes 
+
+**Progress this week**
+- sensor_msgs/Laserscan（激光雷达数据）：激光雷达是机器人的“眼睛”，它发射激光并测量反射回来的时间，从而知道“每个方向上最近的障碍物有多远”。LaserScan就是这个测量结果在ROS2中的标准消息格式，它描述了：在某个时刻，激光雷达扫描了一圈，得到了哪些距离值。
+  1. 消息结构
+```
+sensor_msgs/LaserScan:
+  header:                # 时间戳 + frame_id
+    stamp: 时刻
+    frame_id:    # 告诉系统：这些距离是在 ... 坐标系里测的
+  angle_min:       # 起始角度（弧度）
+  angle_max:        # 结束角度
+  angle_increment:  # 每两个测量点之间的角度增量
+  time_increment:    # 每个点之间的时间增量
+  scan_time:         # 完整扫描一圈所需的时间（秒）
+  range_min:         # 最小可测距离（米）
+  range_max:        # 最大可测距离（米）
+  ranges: [...]   # 距离值数组（单位：米）
+  intensities: [...]     # 反射强度（可选）
+```
+  2. 作用：
+     - 建图：SLAM节点订阅/scan，把障碍物位置累计成地图；
+     - 定位(AMCL)：把当前扫描和地图匹配，推断机器人位置；
+     - 避障(Local Costmap)：实时检测障碍物，动态更新代价地图。
+  3. 错误排查：检查ros2 topic echo /scan --once看是否有数据。
+- sensor_msgs/Imu：即Inertial Measurement Unit（惯性测量单元），是机器人的“内耳”和“陀螺仪”，像一个“迷你GPS”，但它不依赖外部信号，完全靠自己感知运动。
+  1. 消息结构
+```
+sensor_msgs/Imu:
+  header:                # 时间戳 + frame_id（通常是 "imu_link"）
+  orientation:           # 四元数（x, y, z, w），描述机器人相对世界坐标系的朝向
+  orientation_covariance: [0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01]  # 3x3 协方差矩阵
+  angular_velocity:      # 角速度（rad/s），绕 X、Y、Z 轴
+  angular_velocity_covariance: ...
+  linear_acceleration:   # 线性加速度（m/s²），沿 X、Y、Z 轴
+  linear_acceleration_covariance: ...  
+```
+     协方差：数值越大表示噪声越大，融合算法会“降低信任度”。
+  2. 噪声(Noise)：是传感器测量结果中，你不需要的、随机的、无规律的微小波动或误差。
+- timestamp与frame_id
+  1. frame_id相当于“身份证”，即数据是在哪个坐标系中的。
+  2. timestamp相当于“出生证”，即数据是什么时候的。
+  3. 验证frame_id：ros2 topic echo /scan --once | grep frame_id
+  4. 验证timestamp与仿真时间的同步：确认在启动所有节点时，都加上了use_sim_time:=true。
+- EFK（扩展卡尔曼滤波器）：可以看作一个“智能数据融合大脑”，它能将轮式里程计、IMU等多个传感器数据融合在一起，计算出机器人最有可能的精确位置。
+- 使用rosbag复现实验（数据记录与回放）
+  1. 录制数据：ros2 bag record -o carter_run /scan /odom /imu /tf /tf_static /clock，这会记录激光雷达、里程计、IMU、TF变换和仿真时间，数据包会保存在当前目录下。
+  2. 回放数据：ros2 bag play carter_run --clock：这会把录制的数据原样重新发布出来，--clock会让回放器发布仿真时间，确保时间戳对齐。
+
 **Challenges & blockers**
 - _What got in the way? What are you stuck on?_
 
@@ -349,3 +435,4 @@ ${}中还可以包含数学计算。
 **Hours spent (optional):** _e.g. 6h_
 
 **Links (optional):** _commits, notebooks, docs, datasets..._
+
