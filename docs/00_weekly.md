@@ -352,7 +352,7 @@ ${}中还可以包含数学计算。
    5. Localization（定位）：定位模块负责回答“机器人在哪”的问题。
    6. Planner Server（规划器服务器）：即“全局规划器“。它的任务是根据当前地图和机器人位置，计算出一条从起点到目标点的全局最优路径。
    7. Controller Server（控制器服务器）：即”局部控制器“。它负责执行规划器生成的全局路径，将路径转换成具体的速度指令发送给电机。它主要关注机器人周围局部的动态环境，进行实时避障。
-   8. Recovery Server（恢复服务器）：处理卡住/异常情况（后退、旋转、重新规划）。
+   8. Recovery Server（恢复服务器）/ Behavior_server（行为服务器，恢复服务器的升级版本）：处理卡住/异常情况（后退、旋转、重新规划）。
    9. Behavior Tree Navigator（行为树导航器）：是Nav2的决策和调度核心。它使用行为树(BT)来定义和组织复杂的导航行为。
    10. Costmap（代价地图）：是机器人用来表示环境”通行代价“的2D网格图。
       - Global Costmap（全局代价地图）：基于整个静态地图构建，范围大、更新慢。Planner Server使用它来规划全局路径。
@@ -362,13 +362,13 @@ ${}中还可以包含数学计算。
       - Static Layer（静态层）：来自预先构建好的地图（如SLAM建图结果），它描绘了墙壁等固定不变的障碍物。主要用于global_costmap。
       - Obstacle Layer（障碍层）：实时处理传感器数据（如激光雷达），将检测到的障碍物标记在代价地图上。global_costmap和local_costmap都会用到。
       - Voxel Layer（体素层）：Obstacle Layer的3D升级版，处理点云等3D数据，能更精确地处理高于或低于机器人的障碍物。常用于local_costmap实现更精确的实时避障。
-   13. 如何检查导航链路是否接通：ros2 topic echo /plan（查看是否生成路径）, ros2 topic echo /cmd_vel（查看是否发出速度指令）, ros2 node list（查看各节点）, ros2 node info（查看各节点状态）。
-   14. 参数调整的基本原则：
+   12. 如何检查导航链路是否接通：ros2 topic echo /plan（查看是否生成路径）, ros2 topic echo /cmd_vel（查看是否发出速度指令）, ros2 node list（查看各节点）, ros2 node info（查看各节点状态）。
+   13. 参数调整的基本原则：
        - 路径规划：tolerance（容差）调大，路径更直；调小，路径更贴墙。
        - 避障：inflation_radius（膨胀半径）调大，机器人更怕障碍物；调小，更“勇敢”。
        - 速度：max_vel_x, max_vel_theta限制机器人的最大运动能力。
        - 目标检查：xy_goal_tolerance, yaw_goal_tolerance控制机器人认为“到达目标”的误差范围。
-   15. 一些参数：
+   14. 一些参数：
       - trace_unknown_space：是Nav2全局代价地图中的一个关键的布尔参数，决定了未被传感器探测到的区域（未知空间）是否会被纳入路径规划的考量。推荐填true，即将未知区域视为可通行但有风险的空间，路径规划会尽量避免穿越，但如果别无选择，也可以从中穿行，这能帮你在探索建图时找到通往未知区域的路。
       - controller_plugin: "dwb_core::DWBLocalPlanner"：DWBLocalPlanner的核心任务就是解决实时避障与跟踪全局路径的问题。它根据机器人当前的速度和加减速能力，生成大量可能的运动方案，然后对每个方案进行短时间内的运动模拟，再用一套打分系统(Critic Plugins)对模拟结果打分，最后选出得分最高的方案，转换成速度指令发布出去。当你不确定用哪个局部规划器时，用它通常是最稳妥的选择。
   
@@ -492,6 +492,9 @@ sensor_msgs/Imu:
   2. /rviz_navigation_dialog_action_client：作为“传话筒”，把Action Server接收到的指令转交给
   3. /clock：专门发布时间戳的全局标准话题（消息类型是rosgraph_msgs/msg/Clock，内容只有一个时间字段），强制让所有ROS节点使用仿真时间。
   4. /bond：用于实现节点间“心跳保活”机制的通信话题。例如节点A与/bond连接后，通过/bond定时发送“心跳包”，只要心跳正常，就证明对方运行良好。
+  5. /local_costmap：
+     - /local_costmap/costmap_raw（原始局部代价地图）：数据更“原汁原味”，适合需要精确代价值的算法模块。
+     - /local_costmap/published_footprint（已发布足迹）：它定义了机器人在水平面上的真实“占地面积”（轮廓多边形）。这个信息会与代价地图结合，用来精确检查机器人是否与障碍物发生碰撞。
 - Pipeline（管道）：数据流处理，每个链都负责将上游的原始数据，经过特定算法加工后，输出给下游模块使用。
   1. 建图链 (Mapping Chain) —— “记忆系统”
    - 输入：/scan（激光雷达）、/camera/depth/points（深度点云）、/odom（里程计）。
