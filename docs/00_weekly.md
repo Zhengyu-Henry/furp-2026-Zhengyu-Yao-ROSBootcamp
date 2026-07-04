@@ -36,6 +36,10 @@
 **Progress this week**
 - Set up repository from the FURP template.
 - 预备周(week0)已完成对nodes, topics, services, parameters, actions以及它们的相关CTI Tools的学习，本周将继续完成剩余CTI Tools的学习，同时进入对Client Libraries的学习。
+  1. topic：持续数据流，多对多，异步。典型例子有/scan、/image、/odom。
+  2. service：一次请求，一次回答。典型例子有保存地图、查询状态、重置计数器。
+  3. action：长任务，有反馈，可取消。典型例子有导航到目标点、执行轨迹、抓取任务。
+  4. parameter：运行时配置。典型例子有速度上限、frame 名、阈值。
 - 使用rqt_console来查看和过滤日志消息，通过turtlesim演示了出现意外时（turtle撞墙了）显示的日志消息，并认识了日志消息不同的级别顺序以及设置日志级别的命令。
    <img width="2187" height="1392" alt="截图 2026-06-09 11-41-53" src="https://github.com/user-attachments/assets/aaae2f64-9aae-4d5e-8a5f-d58fb88a9a1a" />
 - 认识Launch文件，用于解决手动启动节点较繁杂的问题。我使用了一个python格式的Launch文件，直接同时打开了两个turtlesim，即同时启动了两个节点。
@@ -185,6 +189,14 @@ entry_points={
      - 因此需要通过setup.py的data_files参数显示告诉setuptools：请把launch/目录下的文件复制到share/包名/launch下。
      - 基本理解了输入到setup.py中的内容。其中os模块用于路径拼接，glob模块用于匹配文件模式。
   4. 认识Substitution：是一种在执行时才被计算和替换的变量，它让你可以在Launch文件中使用动态的值，而不是写死固定的字符串。
+  5. LaunchCofiguration：表示一个可以在运行时获取值的变量（即命令行参数的值），为整个导航栈定义可动态配置的输入参数，以便在不同场景（真实机器人/仿真/多机器人）下复用，而不需要修改 Launch 文件本身。
+  6. get_package_share_directory：查找某个包的安装路径。
+  7. LaunchDescription：每个Launch文件的必须返回值；定义generate_launch_description()函数：这是ROS2 launch文件的入口点，必须叫这个名字。
+  8. DeclareLaunchArgument：声明一个可以在命令行覆盖的参数。
+  9. IncludeLaunchDescription：包含另一个Launch文件；launch_arguments：把一堆参数传给被包含的launch文件，这些参数会覆盖被包含文件内部的默认值（如果它们有同名参数的话），如果没有设置被包含文件中的一些参数，则这些参数使用被包含文件中的默认值。
+  10. IfCondition：条件判断。
+  11. PythonLaunchDescriptionSource：指定被包含的launch文件的来源（Python格式）。
+  12. PythonExpression：允许在launch文件中嵌入Python表达式。
 - 认识时间戳(timestamp)：在ROS2中，绝大多数消息（特别是传感器数据和TF变换）都包含一个时间戳字段，用来告诉系统“我是在这个时间点被测量/生成的”。
 - 认识传感器(sensor)：相当于“机器人感知真实世界的器官”。它把物理世界中的信号（光、声音、距离、力、温度等）转换成机器人能理解的电信号或数据。
 - 学习XML，为后续学习URDF做准备
@@ -306,7 +318,12 @@ ${}中还可以包含数学计算。
      - PPR(Pulses Per Revolution，每转脉冲数)：电机轴每转一整圈，编码器产生tick的数量。
    3. 你需要把tick的变化率换算成轮子的线速度和角速度。同样diff_drive_controller内部已经封装了“编码器反馈处理”模块，只需要在YAML配置文件中告诉它轮子半径(r)和多久发布一次里程计（通常是50Hz）即可，控制器会订阅底层硬件节点发来的原始tick消息，自动完成公式计算，并最终生成/odom话题里的速度值，以及TF树中的odom到base_link变换。
 - ros2_control：是ROS2官方提供的硬件抽象框架，它为不同机器人提供一套统一的控制接口。
-- diff_drive_controller：是ros2_control中专门针对差速驱动机器人的官方控制器。它订阅/cmd_vel，接收了linear.x和angular.z；计算了左右轮速度；发布了/odom（根据轮子实际转动，积分计算里程计数据，发布nav_msgs/Odometry；广播odom到base_link的TF，让整个系统知道机器人的位置；把“目标轮速”转换成电机硬件能执行的指令。
+- diff_drive_controller（底盘驱动）：是ros2_control中专门针对差速驱动机器人的官方控制器。它订阅/cmd_vel，接收了linear.x和angular.z；计算了左右轮速度；发布了/odom（根据轮子实际转动，积分计算里程计数据，发布nav_msgs/Odometry；广播odom到base_link的TF，让整个系统知道机器人的位置；把“目标轮速”转换成电机硬件能执行的指令。
+- odom是怎么发布的？
+  1. odom到base_link这个TF变换，只能由一个权威节点发布，但这个节点可以是底盘驱动节点，也可以是EKF融合节点。
+  2. 底盘直接发布/odom：底盘驱动（如diff_drive_controller）靠轮子编码器算位置，它的数据是纯局部的，简单、平滑，但打滑或路径不平就会漂移，且永远不知道自己偏了。
+  3. 融合定位（带IMU的高级配置，EKF发布）：EKF robot_localization是官方EKF节点，可以看作一个“智能数据融合大脑”，它能将轮式里程计、IMU等多个传感器数据融合在一起，计算出机器人最有可能的精确位置。这样系统中所有需要位置信息的节点（如Nav2、RViz）都从同一个来源（EKF）获取位置，避免了数据不一致。
+  4. 如果使用EKF发布，则底盘驱动只提供原始测量数据。底盘驱动不再直接发布/odom话题，而是发布另一个话题（比如/raw_odom或/wheel_odom），并不再发布odom到base_link的TF。EKF节点订阅这个/raw_odom，把它当作输入源之一。
 - 速度限制与加速度限制：为线速度和角速度设置最大速度和最大加速度，防止电机跳闸、打滑或烧毁。
 - SLAM Toolbox
   1. SLAM（Simultaneous Localization and Mapping，同步定位于地图构建）不需要任何先验信息，只用传感器数据和数学算法，同时估算位置和地图。
@@ -352,7 +369,11 @@ ${}中还可以包含数学计算。
        - 速度：max_vel_x, max_vel_theta限制机器人的最大运动能力。
        - 目标检查：xy_goal_tolerance, yaw_goal_tolerance控制机器人认为“到达目标”的误差范围。
    15. 一些参数：
-       - trace_unknown_space：是Nav2全局代价地图中的一个关键的布尔参数，决定了未被传感器探测到的区域（未知空间）是否会被纳入路径规划的考量。推荐填true，即将未知区域视为可通行但有风险的空间，路径规划会尽量避免穿越，但如果别无选择，也可以从中穿行，这能帮你在探索建图时找到通往未知区域的路。
+      - trace_unknown_space：是Nav2全局代价地图中的一个关键的布尔参数，决定了未被传感器探测到的区域（未知空间）是否会被纳入路径规划的考量。推荐填true，即将未知区域视为可通行但有风险的空间，路径规划会尽量避免穿越，但如果别无选择，也可以从中穿行，这能帮你在探索建图时找到通往未知区域的路。
+      - controller_plugin: "dwb_core::DWBLocalPlanner"：DWBLocalPlanner的核心任务就是解决实时避障与跟踪全局路径的问题。它根据机器人当前的速度和加减速能力，生成大量可能的运动方案，然后对每个方案进行短时间内的运动模拟，再用一套打分系统(Critic Plugins)对模拟结果打分，最后选出得分最高的方案，转换成速度指令发布出去。当你不确定用哪个局部规划器时，用它通常是最稳妥的选择。
+  
+    
+       
 - Lifecycle Node（生命周期节点）：生命周期节点把启动分解成了“先配置，再激活”的严谨步骤。它能确保所有硬件和依赖准备就绪后，再让机器人动起来；当某个节点出问题时，也能有序地让整个系统安全关闭，避免失控。
   1. Primary States（主状态）
      - unconfigured（未配置）：节点刚被实例化（创建）出来时的初始状态。
@@ -426,10 +447,79 @@ sensor_msgs/Imu:
   2. timestamp相当于“出生证”，即数据是什么时候的。
   3. 验证frame_id：ros2 topic echo /scan --once | grep frame_id
   4. 验证timestamp与仿真时间的同步：确认在启动所有节点时，都加上了use_sim_time:=true。
-- EFK（扩展卡尔曼滤波器）：可以看作一个“智能数据融合大脑”，它能将轮式里程计、IMU等多个传感器数据融合在一起，计算出机器人最有可能的精确位置。
 - 使用rosbag复现实验（数据记录与回放）
   1. 录制数据：ros2 bag record -o carter_run /scan /odom /imu /tf /tf_static /clock，这会记录激光雷达、里程计、IMU、TF变换和仿真时间，数据包会保存在当前目录下。
   2. 回放数据：ros2 bag play carter_run --clock：这会把录制的数据原样重新发布出来，--clock会让回放器发布仿真时间，确保时间戳对齐。
+- 扫描匹配(Scan Matching)：机器人不知道自己的精确位置，当它测到了一帧激光数据后，扫描匹配要做的，就是疯狂地平移、旋转这帧激光数据，让它和上一帧（或已有地图）完美贴合。
+- 图优化(Graph Optimization)：本质上是一个“后端优化(Back-end)”算法。
+  1. 图由什么组成：
+     - 顶点(Nodes/Vertices)：代表待估计的变量，通常是机器人在不同时刻的位姿（位置+朝向），或者是地图中某个路标点(Landmark)的坐标。
+     - 边(Edges/Constraints)：代表顶点之间的约束关系。它是一种“测量值“，比如里程计告诉你”从A点走了1米到B点“。
+  2. 工作原理（两步走）：
+     - 构建误差函数（找矛盾）：每条”边“都有一个对应的残差(Residual)，即“实际测量值”和“根据当前顶点估计值反算出的预测值”之间的差异。
+     - 最小化全局误差（调矛盾）：找到一个最优的顶点配置（即所有历史位姿和路标点的最佳估计值），使得所有边的残差平方和最小。
+  3. 使用场景：
+     - 当机器人第一次探索环境并绘制地图时，所有传感器数据都是带噪声的，图优化负责“事后算总账”，可以消除累计误差，闭合环路。
+     - 静态地图生成，离线优化，输出高精度/map。
+     - 在线导航阶段是“拿着地图找路”，基本不用图优化。
+- 局部里程计(Local Odometry)
+  1. 它在干什么：只关心从上一秒的位置，相对移动了多少。
+  2. 输入：它依赖的是机器人自身的“本体感觉”，轮子转了几圈（编码器）、身体倾斜的角度（IMU）、或者眼睛看地面纹理的移动（视觉里程计）。
+  3. 输出：它发布/odom话题和odom到base_link的TF变换。
+  4. 特性：
+     - 连续、平滑：它每秒钟更新几十次，指令非常顺滑，适合用来做实时控制（比如转弯、避障）。
+     - 短期可信：在1秒钟内，它告诉你“往前走了0.5米”，这个数据是极准的。
+     - 长期会漂（累计误差）。
+- 全局定位(Global Localization)
+  1. 它在干什么：只关心现在在哪个地图上的哪个位置。
+  2. 输入：它依赖的是绝对参照物，提前建好的地图、当前看到的墙壁形状（激光雷达scan）、以及一个大概的初始位置。
+  3. 输出：它发布map到odom的TF变换，或者直接给出机器人在map坐标系下的绝对坐标（x, y, 0）。
+  4. 特性：
+     - 能修正漂移：会强行把机器人“拉”回正确位置。
+     - 可能跳变或丢失
+- Path（路径）：是一个按时间或空间顺序排列的坐标点(Pose)列表。
+  1. 定义：消息类型为nav_msgs/msg/Path。结构包括Header（头：记录这条路径属于哪个坐标系和时间戳）和Poses（位姿数组：一个PoseStamped的列表，每个点都包含三维位置和朝向）。
+  2. 如何实现（两阶段生成）：
+     - 第一步：全局路径(Global Path)，由Planner Server生成。原理：将Global Costmap网格化，算法把机器人当成一个点，在地图上从起点“探路”到终点，寻找代价值总和最低的格子序列。产出：一条从起点到终点的粗略折线，通常由几百个离散点组成。
+     - 第二部：局部路径(Local Path/Trajectory)，由Controller Server生成。原理：截取全局路径的一段，结合Local Costmap里的动态障碍物，对路径进行“光滑”和“扭曲”处理，同时生成一条未来几秒内带有速度和时间信息的轨迹(Trajectory)。产出：一条平滑的、符合机器人运动学约束（如最小转弯半径）的行驶曲线，最终被拆解成/cmd_vel速度指令发给底盘。
+     - Trajectory（轨迹）：可以理解为“Path + 时间表”。它不仅仅是告诉机器人“走哪条路”，更明确规定了在什么时间点、以什么速度、加速度到达哪个位置。Controller Server负责生成Trajectory，它使用局部轨迹规划期的算法，将Path转换为Trajectory。
+  
+- nota_carter_mini机器人计算图解析
+  1. Nav2的核心行为动作服务器(Action Server)，均包含子话题/status（服务器是否繁忙/成功）和/feedback（当前进度，比如走了多远）
+      - /navigate_to_pose（单点导航）：用于接收“把机器人从A点开到B点”的单一目标指令。
+      - /navigate_through_poses（途径点导航）：用于接收一串路径点，机器人必须按顺序经过这些点，最后到达终点，常用于狭窄通道或需要特定姿态通过的场景。
+      - /follow_waypoints（路径跟踪）：用于执行更底层的路径追踪任务，常用于沿着一整条预先计算好的密集路径点行走。
+  2. /rviz_navigation_dialog_action_client：作为“传话筒”，把Action Server接收到的指令转交给
+  3. /clock：专门发布时间戳的全局标准话题（消息类型是rosgraph_msgs/msg/Clock，内容只有一个时间字段），强制让所有ROS节点使用仿真时间。
+  4. /bond：用于实现节点间“心跳保活”机制的通信话题。例如节点A与/bond连接后，通过/bond定时发送“心跳包”，只要心跳正常，就证明对方运行良好。
+- Pipeline（管道）：数据流处理，每个链都负责将上游的原始数据，经过特定算法加工后，输出给下游模块使用。
+  1. 建图链 (Mapping Chain) —— “记忆系统”
+   - 输入：/scan（激光雷达）、/camera/depth/points（深度点云）、/odom（里程计）。
+   - 核心算法：SLAM（如 Cartographer 或 GMapping）。前端负责帧间匹配，后端（图优化）负责消除累积误差和闭环检测。
+   - 输出：静态的 /map（占据栅格地图）。
+   - 作用：这是所有导航的前置基础，为机器人提供环境的“先验知识”。
+  2. 定位链 (Localization Chain) —— “坐标意识”
+   - 输入：静态 /map + 实时 /scan + /odom。
+   - 核心算法：AMCL（自适应蒙特卡洛定位） 或 卡尔曼滤波。它通过粒子滤波，将实时传感器数据与静态地图进行匹配。
+   - 输出：/amcl_pose 和 TF 坐标变换（map → odom → base_link）。
+   - 作用：实时回答“我在全局地图中的精确位置是哪里”。
+  3. Planner 链 (全局规划链) —— “战略家”
+   - 输入：定位结果（当前位置）+ 用户给的 Goal（目标点）+ Global Costmap（全局代价地图）。
+   - 核心算法：A* 或 Dijkstra（图搜索算法）。
+   - 输出：/plan（一条从起点到终点的粗略坐标点数组，即 Path）。
+   - 作用：在静态地图上规划出一条“最优路线”（避开固定墙壁）。
+  4. Controller 链 (局部控制链) —— “战术家/驾驶员”
+   - 输入：Planner 输出的 /plan（全局路线）+ Local Costmap（局部代价地图，含动态障碍物）+ /odom。
+   - 核心算法：TEB（时间弹性带） 或 MPPI（模型预测路径积分）。它会考虑机器人的物理限制（最大转弯半径、加减速能力）。
+   - 输出：/cmd_vel（线速度和角速度指令，即 Twist 消息）。
+   - 作用：将全局粗路径“平滑化”，并生成带时间/速度信息的轨迹（Trajectory），实时躲避突然出现的人。
+  5. BT 编排链 (行为树编排链) —— “总指挥官”
+   - 这是 Nav2 区别于传统架构的最大亮点，它负责逻辑的切换与容错。
+   - 核心组件：/bt_navigator（行为树导航器）。它通过读取 .xml 文件来组织任务逻辑。
+   - 典型节点：Sequence（顺序执行）、Fallback（备选/重试）、RecoveryNode（恢复节点）。
+   - 作用：当 Controller 发现“卡住了”，BT 链会触发“恢复链”（如下发后退指令、原地旋转重新规划）。它是一个非线性的决策大脑，决定是先规划再走，还是走不动了就“倒车”。
+     
+  
 
 **Challenges & blockers**
 - _What got in the way? What are you stuck on?_
