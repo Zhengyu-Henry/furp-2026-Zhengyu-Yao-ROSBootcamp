@@ -348,13 +348,14 @@ ${}中还可以包含数学计算。
    1. Nav2是一个用于机器人自主导航的模块化框架，它通过多个独立服务器协同工作，让机器人能理解环境、规划路径并躲避障碍。
    2. Nav2采用插件化架构，核心是行为树导航器(Behavior Tree Nevigator)，它像一个总指挥，通过调用各个独立的功能服务器（如规划、控制等）来完成任务。
    3. Nav2的输入：/map（地图）, /tf（坐标系变换）, /scan（激光雷达）, /odom（里程计）；输出：/cmd_vel（速度指令）。使用ros2 topic list和ros2 run tf2_tools view_frames来确认它们都存在。
-   4. Map Server（地图服务器）：用于加载、提供和保存环境地图。
-   5. Localization（定位）：定位模块负责回答“机器人在哪”的问题。
-   6. Planner Server（规划器服务器）：即“全局规划器“。它的任务是根据当前地图和机器人位置，计算出一条从起点到目标点的全局最优路径。
-   7. Controller Server（控制器服务器）：即”局部控制器“。它负责执行规划器生成的全局路径，将路径转换成具体的速度指令发送给电机。它主要关注机器人周围局部的动态环境，进行实时避障。
-   8. Recovery Server（恢复服务器）/ Behavior_server（行为服务器，恢复服务器的升级版本）：处理卡住/异常情况（后退、旋转、重新规划）。
-   9. Behavior Tree Navigator（行为树导航器）：是Nav2的决策和调度核心。它使用行为树(BT)来定义和组织复杂的导航行为。
-   10. Costmap（代价地图）：是机器人用来表示环境”通行代价“的2D网格图。
+   4. AMCL：是Nav2中的定位节点，职责是根据当前激光雷达扫描数据，在地图上推测机器人最可能的位置。
+   5. Map Server（地图服务器）：加载并发布静态地图——启动时读取参数指定的YAML文件，将地图加载为nav_msgs/OccupancyGrid格式，并持续在/map话题上发布；提供动态地图服务——
+   6. Localization（定位）：定位模块负责回答“机器人在哪”的问题。
+   7. Planner Server（规划器服务器）：即“全局规划器“。它的任务是根据当前地图和机器人位置，计算出一条从起点到目标点的全局最优路径。
+   8. Controller Server（控制器服务器）：即”局部控制器“。它负责执行规划器生成的全局路径，将路径转换成具体的速度指令发送给电机。它主要关注机器人周围局部的动态环境，进行实时避障。
+   9. Recovery Server（恢复服务器）/ Behavior_server（行为服务器，恢复服务器的升级版本）：处理卡住/异常情况（后退、旋转、重新规划）。
+   10. Behavior Tree Navigator（行为树导航器）：是Nav2的决策和调度核心。它使用行为树(BT)来定义和组织复杂的导航行为。
+   11. Costmap（代价地图）：是机器人用来表示环境”通行代价“的2D网格图。
       - Global Costmap（全局代价地图）：基于整个静态地图构建，范围大、更新慢。Planner Server使用它来规划全局路径。
       - Local Costmap（局部代价地图）：只关注机器人周围的动态环境，是一个跟随机器人移动的小窗口，更新频率高。Controller Server使用它来进行实时避障和生成局部轨迹。
    11. Layer（层）：就像是在一张代价地图上叠加的不同透明胶片，每张胶片负责提供一种环境信息，叠加在一起，就形成了机器人用于导航的完整“世界视图”。
@@ -495,6 +496,9 @@ sensor_msgs/Imu:
   5. /local_costmap：
      - /local_costmap/costmap_raw（原始局部代价地图）：数据更“原汁原味”，适合需要精确代价值的算法模块。
      - /local_costmap/published_footprint（已发布足迹）：它定义了机器人在水平面上的真实“占地面积”（轮廓多边形）。这个信息会与代价地图结合，用来精确检查机器人是否与障碍物发生碰撞。
+  6. /initialpose：是RViz工具栏中的一个工具（就是那个“2D Pose Estimate”按钮），当你在地图上点击一个位置并拖出方向时，RViz会发布一条消息到/initialpose话题，内容是geometry_msgs/PoseWithCovarianceStamped（包含坐标和朝向）。
+  7. /tf：话题，是所有动态变换（如odom到base_link）的传输通道；/tf_static：话题，专门承载永远不变的静态变换（如base_link到laser_link），静态变换只会被发布一次，后续节点从缓存中读取，不需要重复发送，可以节省带宽。
+  8. /robot_state_publisher（机器人状态发布者）：节点，加载URDF模型，将/joint_states话题的关节数据转换为所有活动关节的坐标变换，发布到/tf话题。
 - Pipeline（管道）：数据流处理，每个链都负责将上游的原始数据，经过特定算法加工后，输出给下游模块使用。
   1. 建图链 (Mapping Chain) —— “记忆系统”
    - 输入：/scan（激光雷达）、/camera/depth/points（深度点云）、/odom（里程计）。
@@ -521,8 +525,80 @@ sensor_msgs/Imu:
    - 核心组件：/bt_navigator（行为树导航器）。它通过读取 .xml 文件来组织任务逻辑。
    - 典型节点：Sequence（顺序执行）、Fallback（备选/重试）、RecoveryNode（恢复节点）。
    - 作用：当 Controller 发现“卡住了”，BT 链会触发“恢复链”（如下发后退指令、原地旋转重新规划）。它是一个非线性的决策大脑，决定是先规划再走，还是走不动了就“倒车”。
+   - /navigate_to_pose（处理单个目标点）和/navigate_through_poses（处理一连串必须经过的关键点）是bt_navigator这个节点对外提供的标准动作接口，相当于BT编排链的入口。
+  6. /waypoint_follower和/follow_waypoints
+   - 它们不属于Nav2的底层核心BT链，而是一个独立的“应用层”节点。它坐在BT链的上方，负责执行“巡逻”或“多点送货”这类高级任务。
+   - 工作机制：/waypoint_follower节点收到/follow_waypoints传过来的一大串点后，它不会自己去规划路径。它会内部拆解任务，循环调用底层BT链的/navigate_to_pose接口，一个一个地把这些点“喂”给BT导航器去执行。
+  7. Lifecycle & Bond Chain（状态监控链）：负责节点间的“心跳(Bond)”监测。如果Planner或Controller节点崩溃，它会自动将整个系统降级为未激活(Inactive)状态，防止机器人失控。
      
-  
+### Week 5 — 2026-07-06
+
+**Attended this week's meeting:** Yes
+
+**Progress this week**
+- Gazebo仿真器学习
+  1. ros_gz_bridge：是一个网络桥接包，它的核心作用是在ROS2和Gazebo（具体来说是Gazebo Transport）之间搭建一个双向翻译通道。
+     - parameter_bridge工具：使用ros2 run ros_gz_bridge parameter_bridge命令来运行，并指定要连接的话题和消息类型。方向符号中“@”表示双向，“[”表示Gazebo到ROS，“]”表示ROS到Gazebo。
+  2. 一旦桥接好了后，有两种选择来通过命令运行仿真机器人：
+     - ros2 topic pub /model/vehicle_blue/cmd_vel geometry_msgs/Twist "linear: { x: 0.1 }"。
+     - 使用teleop_twist_keyboard包，通过键盘按键来运行：ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r /cmd_vel:=/model/vehicle_blue/cmd_vel。
+  3. Meshes（网格）：指的就是机器人的3D外观模型文件，它描述了机器人外壳的每一个曲面和细节。为了装上Meshes，我们需要在package.xml中加入<gazebo_ros gazebo_model_path="${prefix}/.."/>。
+     - Gazebo本身不理解ROS的package://路径，所以找不到文件，需要使用${prefix}/..
+     - ${prefix}：不是文件夹的名字，而是一个CMake变量。它会在编译/安装时，被自动替换成这个包的安装目录。例如你的工作空间叫ros_ws，包叫my_robot_description，当你执行colcon build后，这个包会被安装到/home/zhengyu/ros2_ws/install/my_robot_description，这个路径就是${prefix}的值。
+     - /..：代表上一级目录，所以${prefix}/..的意思就是从我这个包的安装目录，往上一级退。
+  4. Gazebo GUI（图形用户界面）：在运行Gazebo仿真时看到的那个3D窗口，是仿真世界的可视化客户端，显示仿真引擎内部的物理世界（物体、重力、碰撞）。
+  5. URDF只是“骨架”和“外观”。要让机器人在Gazebo里能动、能感知，你必须往URDF里注入Gazebo插件(Plugins)和ROS2控制器(Controllers)。
+```
+<ros2_control name="GazeboSystem" type="system">
+  <hardware>
+    <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+  </hardware>
+  <joint name="head_swivel" />
+</ros2_control>
+
+<gazebo>
+  <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+    <parameters>$(find urdf_sim_tutorial)/config/09a-minimal.yaml</parameters>
+  </plugin>
+</gazebo>
+```
+<ros2_control>是ROS2控制框架的标准标签，用来声明“这个机器人有一个控制系统”。<hardware>：指底层硬件接口。<plugin>gazebo_ros2_control/GazeboSystem</plugin>：加载Gazebo专用的硬件插件，它会把Gazebo物理引擎“伪装”成ROS2控制框架里的硬件。<joint name="head_swivel" />：至少指定一个关节（这里是头部旋转关节），否则控制器无法初始化，后面可以添加更多关节。<gazebo>：这是一个URDF扩展标签，专门用于Gazebo仿真器的配置。
+  6. 之前完成了ROS2和Gazebo之间的连接通道，现在开始往这个通道里“安装具体的控制器”，让Gazebo里的机器人真正开始向外汇报信息
+    - controller_manager：是ROS2 ros2_controll框架中的一个核心节点，起到“总控制台”的作用，负责管理和协调所有控制器，你可以通过它加载(load)、启动(start)、停止(stop)或卸载(unload)不同类型的控制器，它本身不控制机器人，而是管理控制器的“管家”。
+```
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+```
+让controller_manager以100Hz的频率检查所有控制器的状态，并且所有控制指令都基于仿真时钟运行。
+    - 第一个控制器：
+```
+joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+```
+这个控制器用于读取Gazebo物理引擎中所有关节的当前状态（位置、速度、力矩），然后封装成sensors_msgs/JointState消息，发布到/joint_states话题上。它不会控制任何关节，只是听取Gazebo物理引擎的数据，并转述给ROS2。这个控制器由joint_state_broadcaster包提供，是ROS2官方维护的标准控制器之一。
+    - joint_state_broadcaster虽然启动了，但它不知道要读取哪些关节，所以需要你在URDF或配置文件中显示列出哪些关节需要被监控。
+  7. 在URDF中声明“接口”来让数据真正流动起来
+```
+<joint name="head_swivel">
+  <command_interface name="position" />
+  <command_interface name="velocity" />
+  <state_interface name="position"/>
+  <state_interface name="velocity"/>
+</joint>
+```
+<command_interface name="position" />：声明这个关节可以被命令移动到某个精确角度（例如“把头转到 90 度”）。<command_interface name="velocity" />：声明这个关节可以被命令以某个速度旋转（例如“以 0.5 rad/s 的速度转头”）。<state_interface name="position" />：声明这个关节会报告它的当前位置（例如“我现在在 0.2 rad 位置”）。<state_interface name="velocity" />：声明这个关节会报告它的当前速度（例如“我现在以 0.01 rad/s 的速度转动”）。
+
+**Challenges & blockers**
+- _What got in the way? What are you stuck on?_
+
+**Next steps**
+- _What will you do next week?_
+
+**Hours spent (optional):** _e.g. 6h_
+
+**Links (optional):** _commits, notebooks, docs, datasets..._  
 
 **Challenges & blockers**
 - _What got in the way? What are you stuck on?_
