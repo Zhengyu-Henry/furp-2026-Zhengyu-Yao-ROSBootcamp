@@ -607,6 +607,7 @@ joint_state_broadcaster:
      - TravelCost（路径代价）：现在的位置走到那里要费多少电、跑多远？（越近，扣分越少）。
      - Risk（风险）：那个地方是不是窄缝？是不是悬崖？
   4. 算法动作：选出Score最高的那个点，把它作为导航目标发送给Nav2的/navigate_to_pose，机器人就动起来了。
+     
 - OccupancyGrid（占据栅格地图）：本质上是ROS2中定义地图数据的标准消息类型(nav_msgs/msg/OccupancyGrid)，你在RViz里看到的那张黑白灰地图，就是这个消息的可视化结果。
   1. header（文件头）：记录时间戳和地图所在的坐标系（通常是map）。
   2. info（地图信息）：
@@ -624,8 +625,50 @@ joint_state_broadcaster:
   5. 像素坐标 → 真实世界坐标（算距离用）：你在 data[] 里找到的 (x, y) 是像素编号，不是机器人能认的米数。必须经过一步转换：
      - 世界坐标 X = origin.position.x（地图原点在真实坐标系中的x轴位置） + (x + 0.5) * resolution
      - 世界坐标 Y = origin.position.y（地图原点在真实坐标系中的y轴位置） + (y + 0.5) * resolution
+       
+- 降采样：本质是在尽量保留“整体形状”的前提下，大幅度减少点的数量。
+  1. 通俗理解：你把一幅4K高清照片（几千万像素）设为微信头像，微信会自动把它压缩成缩略图（几百像素）。人眼看起来，还是那个画面，但文件大小减小了几万倍——这个压缩过程，就是降采样。
+  2. 用处：减少计算复杂度，消除“像素级”噪点（激光雷达或建图算法往往会在边界处产生大量“毛刺”点，降采样相当于给这些毛刺打了一层“马赛克”，让后续聚类更容易抓到空间上真正的“大块”区域）。
+  3. “步长抽取”法：
+```
+if len(world_points) > 500:
+    step = len(world_points) // 500
+    world_points = world_points[::step]
+```
+代码会每隔step个点取1个，直接扔掉中间的点。
+
+- 欧氏聚类(Euclidean Clustering)：通俗理解为依据空间距离远近划地盘。
+  1. 基本原理：如果两个点之间的直线距离（欧氏距离）小于某个阈值，就认为它们属于同一伙人。
+  2. 阈值(Eps)：cluster_distance_threshold，距离小于这个值的点，统统拉进一个群；距离大于这个值的，分到别的群。
+  3. 直观效果：原本密密麻麻的绿点，变成了几个清晰的“蜂窝”。
+  4. sklearn.cluster.DBSCAN的作用：
+     - 连接：算法看每个点，在它周围x（阈值，参数配置）米半径画个圈。圈里有超过y（min_cluster_size，参数配置）个点，就形成一个“种子簇”。
+     - 生长：种子簇里的点，继续向外扩张x米搜罗新成员，像滚雪球一样，直到0.25米内再也抓不到新点为止。
+  5. 安全回缩(safety_shrink)：聚类给出的质心，通常位于这簇点的几何中心，但它很悬，可能刚好悬在未知区域的边缘。设置safety_shrink参数值，用于把目标点从几何中心往已知区域（地图原点方向）拖z米，确保导航目标点落在“安全区”，而不是卡在边界线上。
+    
 - 认识BFS（Breadth-First Search，即广度优先搜索）
   1. 想象在广场上泼了一桶水，水会先均匀地漫向紧挨着你的第一圈（距离1），然后再同时漫向第二圈（距离2），一圈一圈地往外扩散。核心逻辑是“先近后远，层层推进”。
+ 
+- 欧拉角(Euler Angles)与四元数(Quaternion)
+  1. 欧拉角就是用翻滚(Roll)、俯仰(Pitch)、偏航(Yaw)来描述旋转，在我们的2D地面机器人课题里，只需要关注偏航角(Yaw)，也就是车头朝哪儿转。
+  2. 四元数就是用(x, y, z, w)四个数表示旋转，完美避免了欧拉角的一个致命缺陷——万向节死锁（简单来说就是当俯仰角正负90度时，偏航和翻滚会打架，导致机器人乱转）。
+     - ROS2底层通信（DDS）强制要求传递四元数，不传就直接报错。
+  3. 专用的将欧拉角转化成四元数的函数：
+```
+def _euler_to_quaternion(self, roll, pitch, yaw):
+        """将欧拉角转为四元数（数学公式）"""
+        qx = math.sin(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) - math.cos(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
+        qy = math.cos(roll/2) * math.sin(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.cos(pitch/2) * math.sin(yaw/2)
+        qz = math.cos(roll/2) * math.cos(pitch/2) * math.sin(yaw/2) - math.sin(roll/2) * math.sin(pitch/2) * math.cos(yaw/2)
+        qw = math.cos(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
+        from geometry_msgs.msg import Quaternion
+        return Quaternion(x=qx, y=qy, z=qz, w=qw)
+```
+
+- 状态机(State Machine)：就是给机器人的大脑画一张“流程图”，它规定在某一时刻，机器人只能处于一种“模式”（状态），当特定事件发生时，它就立刻跳转到另一个模式。
+  1. 核心零件——状态(State)，即当前在干嘛。self.state = 'IDLE'/'PLANNING'/'NAVIGATING'
+  2. 核心零件——事件(Event)，即发生了什么。定时器到期(timer_callback)、导航成功(status == 'success')、导航失败(status == 'failed')
+  3. 核心零件——转移(Transition)，即下一步干嘛。if status == 'success': self.state = 'PLANNING'（到了就找下一个点）。
 
 **Challenges & blockers**
 - _What got in the way? What are you stuck on?_
